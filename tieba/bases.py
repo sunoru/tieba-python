@@ -8,15 +8,19 @@ import cookielib
 import re
 import md5
 
+
 def __get_md5(astr):
     m = md5.new()
     m.update(astr)
     return m.hexdigest()
 
+
 class Tieba(object):
-    postdata_re = re.compile(r'<input type="?hidden"?.*name="?(.*)"?.*value="?(.*)"?.*')
+    postdata_re = re.compile(
+        r'<input type="?hidden"?.*name="?(.*)"?.*value="?(.*)"?.*')
     bduss_re = re.compile(r'BDUSS=(.+?);')
     verifycode_re = re.compile(r'<img.*src="(.*?)".*')
+    fid_re = re.compile(r'/ name="fid" value="(\d+)"\/>/')
 
     def __init__(self, username=None, password=None, bduss=None):
         self.cookie_jar = cookielib.LWPCookieJar()
@@ -34,7 +38,7 @@ class Tieba(object):
         self.password = password
         self.bduss = bduss
         if bduss is not None:
-            #self.cookie_jar.set_cookie("BDUSS
+            # self.cookie_jar.set_cookie("BDUSS
             pass
 
     def get_sure(self):
@@ -44,7 +48,7 @@ class Tieba(object):
     def verify_code(self, url):
         print "Enter the verify code:"
         print url
-        return raw_input() 
+        return raw_input()
 
     def login(self, force=False):
         '''Log in.'''
@@ -52,20 +56,23 @@ class Tieba(object):
             force = self.get_sure()
             if not force:
                 return
-        tmp = self.opener.open("http://wappass.baidu.com/passport/login").read()
+        tmp = self.opener.open(
+            "http://wappass.baidu.com/passport/login").read()
         params = {x[0]: x[1] for x in Tieba.postdata_re.findall(tmp, tmp.find('method=POST'))
-            if x[1] != ''}
+                  if x[1] != ''}
         params["username"] = self.username
         params["password"] = self.password
         if tmp.find("verifycode") >= 0:
-            params["verifycode"] = self.verify_code(Tieba.verifycode_re.findall(tmp))
+            params["verifycode"] = self.verify_code(
+                Tieba.verifycode_re.findall(tmp))
         req = urllib2.Request(
             'http://wappass.baidu.com/passport/login',
             urllib.urlencode(params)
         )
         # 验证码可能出错
         self.content = self.opener.open(req)
-        self.bduss =  Tieba.bduss_re.findall(self.cookie_jar.as_lwp_str())[0]
+        self.opener.close()
+        self.bduss = Tieba.bduss_re.findall(self.cookie_jar.as_lwp_str())[0]
         self.save_cookie()
 
     def logout(self):
@@ -94,7 +101,22 @@ class Tieba(object):
 
     @staticmethod
     def get_fid(tieba_name):
-        while True:
+        i = 0
+        while i < 10:
             url = "http://wapp.baidu.com/f?kw=" + urllib.quote(tieba_name)
-        # TODO
+            retstr = self.opener.open(url)
+            fid = fid_re.findall(retstr.read())
+            if len(fid) > 0:
+                return fid[0]
+        raise
 
+
+class TiebaError(Exception):
+    _mes = 'Unknown Error.'
+
+    def __init__(self):
+        Exception.__init__(self, self._mes)
+
+
+class GetfidError(TiebaError):
+    _mes = 'Failed to get fid.'
