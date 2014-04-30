@@ -11,7 +11,7 @@ import md5
 from sys import stdin, stdout
 from time import sleep
 
-def __get_md5(astr):
+def _get_md5(astr):
     m = md5.new()
     m.update(astr)
     return m.hexdigest()
@@ -24,6 +24,7 @@ class Tieba(object):
     verifycode_re = re.compile(r'<img.*src="(.*?)".*')
     fid_re = re.compile(r' name="fid" value="(\d+)"\/>')
     tbs_re = re.compile(r'forums":(.+?\])')
+    # TODO: <li data-fn=....
 
     _LIMITED_TRY = 10
 
@@ -34,10 +35,11 @@ class Tieba(object):
         cookie_support = urllib2.HTTPCookieProcessor(self.cookie_jar)
         self.opener = urllib2.build_opener(cookie_support, urllib2.HTTPHandler)
         self.opener.addheaders[0] = ('User-agent', "Mozilla/5.0 (iPhone; CPU iPhone OS 5_0 like Mac\
-            OS X) AppleWebKit/534.46 (KHTML, like Gecko) Version/5.1 Mobile/9A334\
-            Safari/7534.48.3 TiebaClient/1.2.1.17")
+ OS X) AppleWebKit/534.46 (KHTML, like Gecko) Version/5.1 Mobile/9A334\
+ Safari/7534.48.3 TiebaClient/1.2.1.17")
         self.infoin = infoin
         self.infoout = infoout
+        self.tbhome_str = None
         self.logged_in = False
         self.is_ready = False
 
@@ -78,7 +80,13 @@ class Tieba(object):
         )
         self.opener.open(req)
         # 验证码可能出错
-        self.bduss = Tieba.bduss_re.findall(self.cookie_jar.as_lwp_str())[0]
+        bduss_tmp = Tieba.bduss_re.findall(self.cookie_jar.as_lwp_str())
+        if len(bduss_tmp) > 0:
+            self.bduss = bduss_tmp[0]
+        else:
+            print bduss_tmp
+            print self.cookie_jar
+            raise TiebaError
         if self._validate_login() is None:
             self.login(True)
             return
@@ -95,11 +103,10 @@ class Tieba(object):
         if not self.logged_in:
             self.login()
         self.infoout.write("Getting ready...")
-        self.imei = self.__get_md5(self.bduss)
+        self.imei = _get_md5(self.bduss)
         self.tbn = self.get_tb()
         self.tbs = self._validate_login()
         self.infoout.write("Done!\n")
-
     def all_check(self):
         self.get_ready()
         for i in xrange(self.tbn):
@@ -125,7 +132,7 @@ class Tieba(object):
         for e1, e2 in params.items():
             strsign += '%s=%s' % e1, e2
         strsign += 'tiebaclient!!!'
-        md5sign = __get_md5(strsign.upper())
+        md5sign = _get_md5(strsign.upper())
         params['sign'] = md5sign
         req = urllib2.Request(base_url, params)
         ret = self.opener.open(req)
@@ -148,7 +155,7 @@ class Tieba(object):
     def _validate_login(self):
         tbs_obj = json.loads(self.opener.open("http://tieba.baidu.com/dc/common/tbs").read())
         tbs = tbs_obj.get('tbs', None)
-        is_login = tbs_obj('is_login', False)
+        is_login = tbs_obj.get('is_login', False)
         return tbs if is_login else None
 
     def _get_fid(self, tbname):
@@ -164,6 +171,7 @@ class Tieba(object):
     def get_tb(self):
         self._get_tbhome()
         tbs = Tieba.tbs_re.findall(self.tbhome_str)
+        #print self.tbhome_str
         if len(tbs) == 0:
             raise GettbsError
         tbs = json.loads(tbs[0])
@@ -177,7 +185,7 @@ class Tieba(object):
                 'exp': tbs[i].get('cur_score', 0)
             }
             tbn.append(now_tb)
-        if len(rtbs) > 0:
+        if len(tbn) > 0:
             tbn.sort(Tieba._cmp_tbs)
         return tbn
 
